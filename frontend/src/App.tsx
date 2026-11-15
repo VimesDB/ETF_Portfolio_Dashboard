@@ -1349,7 +1349,7 @@ function App() {
           </section>
 
           <section className="card">
-            <h2>Pełny rebalancing</h2>
+            <h2>Pełny rebalancing (bez dopłat)</h2>
             {fullRebalance.buys.length === 0 && fullRebalance.sells.length === 0 ? (
               <p className="muted">Portfel jest już na docelowych wagach.</p>
             ) : (
