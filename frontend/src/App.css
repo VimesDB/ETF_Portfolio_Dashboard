@@ -305,6 +305,13 @@
   flex-wrap: wrap;
 }
 
+.config-actions > button,
+.config-actions > .primary-button,
+.config-actions > span {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .backup-actions {
   display: flex;
   gap: 12px;
@@ -367,6 +374,19 @@
   background: #ffffff;
   padding: 8px 12px;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.config-actions > .primary-button {
+  background: linear-gradient(135deg, #1d4ed8, #1e40af);
+  border-color: #1d4ed8;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(30, 64, 175, 0.28);
+  font-weight: 700;
+}
+
+.config-actions > .primary-button:hover {
+  background: linear-gradient(135deg, #1e40af, #1e3a8a);
 }
 
 .ok {

@@ -220,42 +220,6 @@ function asNumber(value: unknown): number {
   return 0;
 }
 
-function solveBuyOnlyRebalance(
-  currentValues: number[],
-  targets: number[],
-): { buys: number[]; additionalBudget: number } {
-  const total = currentValues.reduce((sum, value) => sum + value, 0);
-  if (total <= 0) return { buys: currentValues.map(() => 0), additionalBudget: 0 };
-
-  let low = 0;
-  let high = total * 10;
-  const calcGap = (budget: number) => {
-    const nextTotal = total + budget;
-    const required = currentValues.reduce((sum, currentValue, index) => {
-      const targetValue = targets[index] * nextTotal;
-      return sum + Math.max(0, targetValue - currentValue);
-    }, 0);
-    return required - budget;
-  };
-
-  while (calcGap(high) > 0) {
-    high *= 2;
-    if (high > total * 1000) break;
-  }
-  for (let i = 0; i < 80; i += 1) {
-    const mid = (low + high) / 2;
-    if (calcGap(mid) > 0) low = mid;
-    else high = mid;
-  }
-
-  const additionalBudget = high;
-  const nextTotal = total + additionalBudget;
-  const buys = currentValues.map((currentValue, index) =>
-    Math.max(0, targets[index] * nextTotal - currentValue),
-  );
-  return { buys, additionalBudget };
-}
-
 type AppView = "portfolio" | "history";
 
 type PortfolioApiResponse = {
@@ -553,20 +517,6 @@ function App() {
     return { maxPositiveName, minNegativeName };
   }, [diffPlnByGroup]);
 
-  const rebalancePlan = useMemo(() => {
-    if (!groupedRows.length || totalValue <= 0) {
-      return { additionalBudget: 0, items: [] as Array<{ symbol: string; amountPln: number }> };
-    }
-    const currentValues = groupedRows.map((item) => item.valuePln);
-    const targets = groupedRows.map((item) => item.targetPercent / 100);
-    const solved = solveBuyOnlyRebalance(currentValues, targets);
-    const items = groupedRows
-      .map((item, index) => ({ symbol: item.name, amountPln: solved.buys[index] }))
-      .filter((item) => item.amountPln > 0.01)
-      .sort((a, b) => b.amountPln - a.amountPln);
-    return { additionalBudget: solved.additionalBudget, items };
-  }, [groupedRows, totalValue]);
-
   const interactiveRebalance = useMemo(() => {
     const parsedBudget = Number(budgetInput.replace(",", "."));
     const budget = Number.isFinite(parsedBudget) && parsedBudget > 0 ? parsedBudget : 0;
@@ -574,23 +524,80 @@ function App() {
       return { budget, items: [] as Array<{ symbol: string; amountPln: number }> };
     }
 
-    const deficitItems = groupedRows
-      .map((item) => ({
-        symbol: item.name,
-        deficit: Math.max(0, item.targetPercent / 100 - item.currentPercent / 100),
-      }))
-      .filter((item) => item.deficit > 0);
-    const totalDeficit = deficitItems.reduce((sum, item) => sum + item.deficit, 0);
-    if (totalDeficit <= 0) return { budget, items: [] as Array<{ symbol: string; amountPln: number }> };
+    const itemsBySymbol = new Map<string, number>();
+    let remainingBudget = budget;
 
-    const items = deficitItems
-      .map((item) => ({
-        symbol: item.symbol,
-        amountPln: (item.deficit / totalDeficit) * budget,
-      }))
+    const deficitItems = groupedRows
+      .map((item) => {
+        const targetValue = (item.targetPercent / 100) * totalValue;
+        const deficit = Math.max(0, targetValue - item.valuePln);
+        return { symbol: item.name, deficit };
+      })
+      .filter((item) => item.deficit > 0)
+      .sort((a, b) => b.deficit - a.deficit);
+
+    for (const item of deficitItems) {
+      if (remainingBudget <= 0) break;
+      const amountPln = Math.min(item.deficit, remainingBudget);
+      if (amountPln > 0.01) {
+        itemsBySymbol.set(item.symbol, amountPln);
+      }
+      remainingBudget -= amountPln;
+    }
+
+    if (remainingBudget > 0) {
+      const totalTargetWeight = groupedRows.reduce((sum, item) => sum + item.targetPercent, 0);
+      if (totalTargetWeight > 0) {
+        const fallbackItems = groupedRows
+          .map((item) => ({
+            symbol: item.name,
+            amountPln: (item.targetPercent / totalTargetWeight) * remainingBudget,
+          }))
+          .filter((item) => item.amountPln > 0.01)
+          .sort((a, b) => b.amountPln - a.amountPln);
+
+        for (const item of fallbackItems) {
+          const previous = itemsBySymbol.get(item.symbol) ?? 0;
+          itemsBySymbol.set(item.symbol, previous + item.amountPln);
+        }
+      }
+    }
+
+    const items = [...itemsBySymbol.entries()]
+      .map(([symbol, amountPln]) => ({ symbol, amountPln }))
       .sort((a, b) => b.amountPln - a.amountPln);
+
     return { budget, items };
   }, [budgetInput, groupedRows, totalValue]);
+
+  const fullRebalance = useMemo(() => {
+    if (!groupedRows.length || totalValue <= 0) {
+      return {
+        buys: [] as Array<{ symbol: string; amountPln: number }>,
+        sells: [] as Array<{ symbol: string; amountPln: number }>,
+      };
+    }
+
+    const buys = groupedRows
+      .map((item) => {
+        const targetValue = (item.targetPercent / 100) * totalValue;
+        const gap = Math.max(0, targetValue - item.valuePln);
+        return gap > 0 ? { symbol: item.name, amountPln: gap } : null;
+      })
+      .filter((item): item is { symbol: string; amountPln: number } => item !== null)
+      .sort((a, b) => b.amountPln - a.amountPln);
+
+    const sells = groupedRows
+      .map((item) => {
+        const targetValue = (item.targetPercent / 100) * totalValue;
+        const gap = Math.max(0, item.valuePln - targetValue);
+        return gap > 0 ? { symbol: item.name, amountPln: gap } : null;
+      })
+      .filter((item): item is { symbol: string; amountPln: number } => item !== null)
+      .sort((a, b) => b.amountPln - a.amountPln);
+
+    return { buys, sells };
+  }, [groupedRows, totalValue]);
 
   const totalTarget = useMemo(
     () =>
@@ -1139,7 +1146,9 @@ function App() {
         <div className="config-actions">
           <button type="button" onClick={addHolding}>+ Dodaj ETF</button>
           <button type="button" onClick={addBroker}>+ Dodaj brokera</button>
-          <button type="button" onClick={() => void loadPortfolio()}>Przelicz portfolio</button>
+          <button type="button" className="primary-button" onClick={() => void loadPortfolio()}>
+            Przelicz portfolio
+          </button>
           <span className={Math.abs(totalTarget - 100) < 0.01 ? "ok" : "warn"}>
             Suma wag docelowych: {totalTarget.toFixed(2)}%
           </span>
@@ -1321,9 +1330,6 @@ function App() {
                 onChange={(event) => setBudgetInput(event.target.value)}
               />
             </div>
-            <p className="muted">
-              Referencja pełnego domknięcia wag: <strong>{formatCurrency(rebalancePlan.additionalBudget)}</strong>
-            </p>
             {interactiveRebalance.items.length === 0 ? (
               <p className="muted">Brak zakupów do wykonania dla obecnych danych.</p>
             ) : (
@@ -1338,6 +1344,40 @@ function App() {
                     </li>
                   ))}
                 </ul>
+              </>
+            )}
+          </section>
+
+          <section className="card">
+            <h2>Pełny rebalancing</h2>
+            {fullRebalance.buys.length === 0 && fullRebalance.sells.length === 0 ? (
+              <p className="muted">Portfel jest już na docelowych wagach.</p>
+            ) : (
+              <>
+                {fullRebalance.sells.length > 0 && (
+                  <>
+                    <p>Sprzedaj:</p>
+                    <ul>
+                      {fullRebalance.sells.map((item) => (
+                        <li key={`sell-${item.symbol}`}>
+                          {item.symbol}: <strong>{formatCurrency(item.amountPln)}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {fullRebalance.buys.length > 0 && (
+                  <>
+                    <p>Kup:</p>
+                    <ul>
+                      {fullRebalance.buys.map((item) => (
+                        <li key={`buy-${item.symbol}`}>
+                          {item.symbol}: <strong>{formatCurrency(item.amountPln)}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </>
             )}
           </section>
