@@ -253,7 +253,20 @@ export function HistoryTab({
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="dateLabel" tick={{ fontSize: 12 }} />
+              <XAxis
+                dataKey="timestamp"
+                type="number"
+                scale="time"
+                domain={["dataMin", "dataMax"]}
+                minTickGap={28}
+                tick={{ fontSize: 12 }}
+                tickFormatter={(value) =>
+                  new Date(asNumber(value)).toLocaleDateString("pl-PL", {
+                    day: "2-digit",
+                    month: "2-digit",
+                  })
+                }
+              />
               <YAxis
                 tickFormatter={(value) =>
                   new Intl.NumberFormat("pl-PL", {
@@ -270,7 +283,17 @@ export function HistoryTab({
                       : (portfolios.find((p) => p.id === name)?.name ?? String(name));
                   return [formatCurrency(asNumber(value)), label];
                 }}
-                labelFormatter={(label) => `Data: ${label}`}
+                labelFormatter={(label) => {
+                  const timestamp = asNumber(label);
+                  const formatted = Number.isFinite(timestamp)
+                    ? new Date(timestamp).toLocaleDateString("pl-PL", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                      })
+                    : String(label);
+                  return `Data: ${formatted}`;
+                }}
               />
               <Legend
                 formatter={(value) =>
@@ -308,8 +331,8 @@ export function HistoryTab({
             </LineChart>
           </ResponsiveContainer>
           <p className="muted history-footnote">
-            Suma dla danego dnia = suma wartości kont, które mają punkt w tym dniu (bez
-            uzupełniania brakujących dni).
+            Oś czasu jest kalendarzowa: odstęp między punktami odpowiada rzeczywistym dniom, a nie
+            liczbie pomiarów. Suma dla danego dnia = suma wartości kont, które mają punkt w tym dniu.
           </p>
         </div>
       )}

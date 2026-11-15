@@ -1046,11 +1046,6 @@ function App() {
               {holdings.map((holding, index) => (
                 <tr
                   key={index}
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("text/plain", String(index));
-                  }}
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => {
                     event.preventDefault();
@@ -1058,7 +1053,18 @@ function App() {
                     if (Number.isFinite(from)) moveHolding(from, index);
                   }}
                 >
-                  <td className="drag-handle">≡</td>
+                  <td
+                    className="drag-handle"
+                    draggable
+                    title="Przeciągnij, aby zmienić kolejność"
+                    aria-label="Przeciągnij wiersz"
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", String(index));
+                    }}
+                  >
+                    ≡
+                  </td>
                   <td>
                     <input
                       type="text"
@@ -1105,7 +1111,7 @@ function App() {
         </div>
         <h3>Wagi grup (ustalane raz na grupę)</h3>
         <div className="table-wrap">
-          <table>
+          <table className="group-weights-table">
             <thead>
               <tr>
                 <th>Grupa</th>

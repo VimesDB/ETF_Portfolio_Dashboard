@@ -96,6 +96,7 @@ export function removeHistoryForPortfolio(
 export type HistoryChartRow = {
   date: string;
   dateLabel: string;
+  timestamp: number;
   [key: string]: string | number;
 };
 
@@ -117,9 +118,11 @@ export function buildHistoryChartData(
   }
 
   return sortedDates.map((date) => {
+    const timestamp = new Date(`${date}T12:00:00`).getTime();
     const row: HistoryChartRow = {
       date,
-      dateLabel: new Date(`${date}T12:00:00`).toLocaleDateString("pl-PL", {
+      timestamp,
+      dateLabel: new Date(timestamp).toLocaleDateString("pl-PL", {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
